@@ -57,7 +57,7 @@ The installation is estimated to take 1 hour, depending on the network environme
 
 Convert the SVS file to PNG format and use the watershed algorithm to transform the original image into a binary image. Divide the entire H&E image into tiles of size 224x224, ensuring that each tile contains more than 60% of the tissue content.
 ```
-python ./data/H&E Tile Segmentation with watershed.py 
+python "./data/H&E Tile Segmentation with watershed.py" 
 ```
 #### Extract Features
 In the file `./code/1_deeplearning_contrastive_cluster/models/model.py `, we provide an example of how to extract features
