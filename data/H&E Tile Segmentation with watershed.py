@@ -149,11 +149,11 @@ def image_write(save_path,image_list,thres,Orial_Name):
 
 def Tile_Image(image_list,image_shape,image_size):
     '''
-    ##将切割好的图像重新拼接
-    :param image_list: 存储了所有的切割图像
-    :param image_shape: 将切割的图像返还的图像大小
-    :param image_size: 单个切割图象大小
-    :return: 拼接好的图像
+    ##切り取った画像をつなぎ直す
+    :param image_list: すべてのカット画像が保存されます
+    :param image_shape: 切り取られた画像が返される画像サイズ
+    :param image_size: 回される画像サイズ
+    :return: ステッチされた画像
     '''
     # w_num = math.ceil(int(image_shape[0])/int(image_size))
     # h_num = math.ceil(int(image_shape[1])/int(image_size))
@@ -171,39 +171,67 @@ def Tile_Image(image_list,image_shape,image_size):
         image[i * image_size:(i + 1) * image_size, (j+1)*image_size:] = image_list[index][:,-(image_shapes1-(j+1)*image_size):]
         index+=1
     for k in range(h_num-1):
-        image[-image_size:, k*image_size:(k+1) * image_size]=image_list[index]
+        image[-image_size:, k*image_size:(k+1) * image_size] = image_list[index]
         index+=1
     image[(i+1) * image_size:, (k+1) * image_size:] = image_list[index][-(image_shapes0-(i+1) * image_size):,-(image_shapes1-(k+1)*image_size):]
     return image
 
 
-def main(image_path,save_path,Cut_Image_Size,Orial_Image_Size,Bold_Image_Szie=1,magnification=4):
+def main(image_path, save_path, Cut_Image_Size, Orial_Image_Size, Bold_Image_Szie=1, magnification=4):
+    # 拡張子を確認し、非画像ファイルをスキップ
+    valid_image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif']
+    _, file_extension = os.path.splitext(image_path)
+    if file_extension.lower() not in valid_image_extensions:
+        print(f"Skipping non-image file: {image_path}")
+        return
+
+    # 画像を読み込む
     image = cv2.imread(image_path)
-    image=cv2.resize(image,dsize=(Orial_Image_Size,Orial_Image_Size),interpolation=cv2.INTER_LINEAR)
-    ##对整个图像进行切割
-    image_list,thres=do_image_cut(image,resize=Orial_Image_Size,image_size=Cut_Image_Size,magnification=magnification)
+    if image is None:
+        print(f"Failed to load image at {image_path}. Please check the file path or format.")
+        return
+
+    # 画像のリサイズ
+    image = cv2.resize(image, dsize=(Orial_Image_Size, Orial_Image_Size), interpolation=cv2.INTER_LINEAR)
+
+    # 対象の画像を切り取る
+    image_list, thres = do_image_cut(image, resize=Orial_Image_Size, image_size=Cut_Image_Size, magnification=magnification)
+
+
     ##保存切割的图像（并以thres筛选背景色的图像）
-    # image_write(save_path,image_list,thres,Orial_Name=image_path.split('/')[-1])
-    ##对图像添加Border
-    Border_List=Add_Border(image_list,Bold_Image_Szie)
-    ##平铺Tiles
-    Tile_list=[]
+    image_write(save_path,image_list,thres,Orial_Name=image_path.split('/')[-1])
+
+    # ボーダーを追加
+    Border_List = Add_Border(image_list, Bold_Image_Szie)
+
+    # タイル数を確認し、足りなければ空のタイルを追加
+    image_shape = [7, 12]  # タイルの行数と列数
+    image_size = Cut_Image_Size + Bold_Image_Szie * 2
+    total_tiles = image_shape[0] * image_shape[1]
+    
+    while len(Border_List) < total_tiles:
+        print(f"Adding empty block to fill missing tiles. Current count: {len(Border_List)}")
+        Border_List.append(np.zeros((image_size, image_size, 3), dtype=np.uint8))  # 空のタイルを追加
+
+    # タイルを平面に並べる
+    Tile_list = []
     for bord in Border_List:
-        if np.sum(bord)!=0:
+        if np.sum(bord) != 0:
             bord[bord == 0] = 255
             Tile_list.append(bord)
-    image_shape=[7,12]
-    image_size = Cut_Image_Size + Bold_Image_Szie * 2
-    Image_Tile=Tile_Image(Tile_list, image_shape, image_size)
-    Image_Show(Image_Tile)
 
-    # ##对切割的图像进行重新拼接
-    Imagess=mask_merge(Border_List,
-                       int((Cut_Image_Size+Bold_Image_Szie*2)*(int(np.sqrt((Orial_Image_Size*Orial_Image_Size)//magnification))/Cut_Image_Size)),
-                       Cut_Image_Size+Bold_Image_Szie*2)
-    # ##显示单张图像
-    Image_Show(Imagess)
-    a=1
+    # Tile_list が期待通りの長さか確認する
+    if len(Tile_list) < total_tiles:
+        print(f"Warning: Tile_list has fewer items ({len(Tile_list)}) than expected ({total_tiles}). Adding empty tiles.")
+        while len(Tile_list) < total_tiles:
+            Tile_list.append(np.zeros((image_size, image_size, 3), dtype=np.uint8))
+
+    # タイル画像を生成
+    Image_Tile = Tile_Image(Tile_list, image_shape, image_size)
+    #以下をコメントアウトするとタイル画像が表示される。
+    #Image_Show(Image_Tile)
+
+
 
 
 def WSI_Whole(image_path,outPut):
@@ -220,11 +248,13 @@ def WSI_Whole(image_path,outPut):
 
 
 if __name__ == '__main__':
-    save_path= '../../../Datasets/Image_4_magnification/'
-    Paths='../../../Datasets/SCLC_Image/'
+    save_path= '../Datasets/Image_4_magnification/'
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+    Paths='../Datasets/SCLC_Image/'
     FileName=os.listdir(Paths)
     for name in FileName:
-        print('已经输出:'+name)
+        print('export:'+name)
         Image_Patch=Paths+name+'/'
         Image_Name=os.listdir(Image_Patch)
         for images in Image_Name:
